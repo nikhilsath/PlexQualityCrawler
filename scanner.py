@@ -64,6 +64,7 @@ def scan_directory():
                     continue  # Skip unchanged files
 
             file_type = os.path.splitext(file)[1].lower()  # Extract file extension
+
             scanned_files.append((file, file_path, file_size, file_modified, file_type))
 
     logging.info(f"Incremental scan completed: Found {len(scanned_files)} new or modified files.")
