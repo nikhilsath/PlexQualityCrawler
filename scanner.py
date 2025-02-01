@@ -42,8 +42,9 @@ def mark_scan_in_progress(scan_id):
     database.update_scan_status(scan_id, "in_progress")
     logging.info(f"Scan ID {scan_id} marked as 'in_progress'.")
 
+#Scans the SMB directory and collects metadata only for new or modified files.
 def scan_directory():
-    """Scans the SMB directory and collects metadata only for new or modified files."""
+
     if not os.path.exists(MOVIE_PATH):
         logging.error(f"Scan failed: Directory '{MOVIE_PATH}' not found.")
         return []
@@ -62,7 +63,8 @@ def scan_directory():
                 if file_size == old_size and file_modified == old_modified:
                     continue  # Skip unchanged files
 
-            scanned_files.append((file, file_path, file_size, file_modified))
+            file_type = os.path.splitext(file)[1].lower()  # Extract file extension
+            scanned_files.append((file, file_path, file_size, file_modified, file_type))
 
     logging.info(f"Incremental scan completed: Found {len(scanned_files)} new or modified files.")
     return scanned_files
@@ -82,8 +84,9 @@ if __name__ == "__main__":
             scanned_files = scan_directory()
 
             # Store results in DB
-            for file_name, file_path, file_size, file_modified in scanned_files:
-                database.store_scan_results(file_name, file_path, file_size, file_modified)
+            for file, file_path, file_size, file_modified, file_type in scanned_files:
+                database.store_scan_results(file, file_path, file_size, file_modified, file_type)
+
 
             # Mark deleted files
             database.mark_deleted_files()

@@ -4,7 +4,8 @@ import platform
 import subprocess
 import logging
 import database 
-from PyQt6.QtWidgets import QApplication, QWidget, QLabel, QLineEdit, QPushButton, QMessageBox, QFileDialog
+from PyQt6.QtWidgets import QApplication, QWidget, QLabel, QLineEdit, QPushButton, QMessageBox, QFileDialog, QTableView, QVBoxLayout, QAbstractItemView
+from PyQt6.QtCore import QAbstractTableModel, Qt
 
 LOG_FILE = os.path.join(os.getcwd(), "plex_quality_crawler.log")  # Log file path
 
@@ -14,6 +15,35 @@ logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(levelname)s - %(message)s"
 )
+
+class FileTableModel(QAbstractTableModel):
+    """Model for displaying scanned file data in a QTableView."""
+    
+    def __init__(self):
+        super().__init__()
+        self.load_data()
+
+    def load_data(self):
+        """Fetch data from the database."""
+        self.data = database.get_all_files()  # Fetch file records from DB
+        self.headers = ["File Name", "File Type", "File Size", "Last Modified"]
+
+    def rowCount(self, parent=None):
+        return len(self.data)
+
+    def columnCount(self, parent=None):
+        return len(self.headers)
+
+    def data(self, index, role=Qt.ItemDataRole.DisplayRole):
+        if role == Qt.ItemDataRole.DisplayRole:
+            return str(self.data[index.row()][index.column()])
+        return None
+
+    def headerData(self, section, orientation, role=Qt.ItemDataRole.DisplayRole):
+        if role == Qt.ItemDataRole.DisplayRole and orientation == Qt.Orientation.Horizontal:
+            return self.headers[section]
+        return None
+
 
 #Opens a file dialog to select the scan path and saves it."""
 def select_scan_path():
@@ -71,7 +101,7 @@ app = QApplication(sys.argv)
 # Create the main window
 window = QWidget()
 window.setWindowTitle("Plex Quality Crawler")  # Set window title
-window.resize(400, 200)  # Window size
+window.resize(600, 400)  # Window size
 
 # Label to display the selected scan path
 scan_path_label = QLabel("Selected Scan Path: Not Set", window)
@@ -103,9 +133,51 @@ logs_button = QPushButton("Open Logs", window)
 logs_button.move(20, 130) 
 logs_button.clicked.connect(open_logs)
 
+layout = QVBoxLayout()
+
+# Table View
+table_view = QTableView()
+table_model = FileTableModel()
+table_view.setModel(table_model)
+
+# Enable sorting & selection
+table_view.setSortingEnabled(True)
+table_view.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+table_view.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+
+layout.addWidget(table_view)
+
+# Buttons Section
+buttons_layout = QVBoxLayout()
+
+# Start Scan Button
+start_button = QPushButton("Add Scan")
+start_button.clicked.connect(start_scan)
+buttons_layout.addWidget(start_button)
+
+# Start Scanner Button
+start_scanner_button = QPushButton("Start Scanner")
+start_scanner_button.clicked.connect(start_scanner)
+buttons_layout.addWidget(start_scanner_button)
+
+# Select Scan Path Button
+select_path_button = QPushButton("Select Scan Path")
+select_path_button.clicked.connect(select_scan_path)
+buttons_layout.addWidget(select_path_button)
+
+# Open Logs Button
+logs_button = QPushButton("Open Logs")
+logs_button.clicked.connect(open_logs)
+buttons_layout.addWidget(logs_button)
+
+layout.addLayout(buttons_layout)
+
+window.setLayout(layout)
+
 
 # Show the window
 window.show()
 
 # Run the application event loop
 sys.exit(app.exec())
+
