@@ -61,13 +61,11 @@ def update_file_count():
 # Opens a file dialog to select the scan path and saves it."""
 def select_scan_path():
     folder_path = QFileDialog.getExistingDirectory(window, "Select Scan Directory")
-    
     if folder_path:
-        database.save_scan_path(folder_path)  # ✅ Save path to database
-        database.add_scan_request()  # ✅ Automatically add scan request
+        database.add_scan_request(folder_path)  # Automatically add scan request
         logging.info(f"Scan path updated to: {folder_path}. Scan request added.")
 
-        # ✅ Automatically start the scanner if it's not already running
+        # Automatically start the scanner if it's not already running
         try:
             subprocess.Popen(["python3", "scanner.py"])  
             logging.info("Scanner started automatically from UI.")

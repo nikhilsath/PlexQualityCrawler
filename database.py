@@ -1,6 +1,8 @@
 import sqlite3
 import os
 import logging
+
+
 # Configure logging
 logging.basicConfig(
     filename="plex_quality_crawler.log",
@@ -10,6 +12,22 @@ logging.basicConfig(
 
 
 DB_FILE = "plex_quality_crawler.db"
+
+#enables wal mode for concurrency
+def enable_wal_mode():
+    try:
+        conn = sqlite3.connect(DB_FILE)
+        cursor = conn.cursor()
+        cursor.execute("PRAGMA journal_mode=WAL;")
+        conn.commit()
+        conn.close()
+        logging.info("WAL mode enabled successfully.")
+    except sqlite3.OperationalError as e:
+        logging.error(f"Failed to enable WAL mode: {e}")
+
+
+enable_wal_mode() 
+
 
 def initialize_database():
     #Initializes the database if it doesn't exist and ensures required tables are created.
@@ -80,24 +98,23 @@ def mark_deleted_files():
     conn.close()
 
 #Inserts a new scan request into the queue.
-def add_scan_request():
+def add_scan_request(scan_path):
     conn = sqlite3.connect(DB_FILE)
     cursor = conn.cursor()
 
-    cursor.execute("INSERT INTO ScanQueue (status) VALUES ('pending')")
+    cursor.execute("INSERT INTO ScanQueue (scan_path, status, created_at) VALUES (?, 'pending', datetime('now'))", (scan_path,))
 
     conn.commit()
     conn.close()
 
-    logging.info("New scan request added.")
+    logging.info(f"Scan request added for path: {scan_path}")
 
 def get_pending_scans():
-
     #Retrieves all pending scan requests from the database.
     conn = sqlite3.connect(DB_FILE)
     cursor = conn.cursor()
 
-    cursor.execute("SELECT id FROM ScanQueue WHERE status = 'pending'")
+    cursor.execute("SELECT id, scan_path FROM ScanQueue WHERE status='pending'")
     pending_scans = cursor.fetchall()  # Get all pending scan jobs
 
     conn.close()

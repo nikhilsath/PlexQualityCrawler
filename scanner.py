@@ -6,19 +6,6 @@ import database
 
 DB_FILE = "plex_quality_crawler.db"  # Define the database file
 
-def get_scan_path():
-    """Retrieves the saved scan path from the database."""
-    conn = sqlite3.connect(DB_FILE)
-    cursor = conn.cursor()
-
-    cursor.execute("SELECT scan_path FROM Settings LIMIT 1;")
-    result = cursor.fetchone()
-
-    conn.close()
-    return result[0] if result else None
-
-MOVIE_PATH = get_scan_path()  # Dynamically set scan path
-
 # Configure logging
 logging.basicConfig(
     filename="plex_quality_crawler.log",
@@ -29,28 +16,29 @@ logging.basicConfig(
 # Fetches all pending scans from the database.
 def fetch_pending_scans():
     pending_scans = database.get_pending_scans()
-    
+    print(f"DEBUG: Pending Scans Retrieved -> {pending_scans}")  # 🔍 Debugging step
+
     if not pending_scans:
         logging.info("No pending scans found.")
-    else:
-        logging.info(f"Found {len(pending_scans)} pending scan(s).")
+        return []
 
-    return pending_scans
+    logging.info(f"Found {len(pending_scans)} pending scan(s).")
+    return pending_scans  # Ensure function returns a list of tuples (scan_id, scan_path)
 
+# Updates a scan request's status to 'in_progress'
 def mark_scan_in_progress(scan_id):
-    """Updates a scan request's status to 'in_progress'."""
     database.update_scan_status(scan_id, "in_progress")
     logging.info(f"Scan ID {scan_id} marked as 'in_progress'.")
 
 # Scans the SMB directory and collects metadata only for new or modified files.
-def scan_directory():
+def scan_directory(scan_path):
     """Scans the directory and collects metadata."""
-    if not os.path.exists(MOVIE_PATH):
-        logging.error(f"Scan failed: Directory '{MOVIE_PATH}' not found.")
+    if not os.path.exists(scan_path):
+        logging.error(f"Scan failed: Directory '{scan_path}' not found.")
         return []
 
     scanned_files = []
-    for root, _, files in os.walk(MOVIE_PATH):
+    for root, _, files in os.walk(scan_path):
         for file in files:
             file_path = os.path.join(root, file)
             file_size = os.path.getsize(file_path)
@@ -66,6 +54,7 @@ def scan_directory():
     logging.debug(f"Final scanned files list: {scanned_files}")
     return scanned_files
 
+# MAIN EXECUTION LOOP
 if __name__ == "__main__":
     while True:
         pending_scans = fetch_pending_scans()
@@ -75,12 +64,17 @@ if __name__ == "__main__":
             break  # Exit the loop if there are no pending scans
 
         for scan in pending_scans:
-            scan_id = scan[0]  # Extract only the scan ID from the tuple
+            if len(scan) < 2:
+                logging.error(f"Invalid scan entry found in ScanQueue: {scan}")
+                continue  # Skip this entry
+
+            scan_id, scan_path = scan  # Extract scan ID and scan path
+            
             try:
                 mark_scan_in_progress(scan_id)
-                logging.info(f"Processing scan ID: {scan_id}")
+                logging.info(f"Processing scan ID: {scan_id} with path {scan_path}")
 
-                scanned_files = scan_directory()
+                scanned_files = scan_directory(scan_path)
                 
                 if not all(len(entry) == 5 for entry in scanned_files):
                     logging.error(f"Invalid tuple structure detected in scan ID {scan_id}: {scanned_files}")
