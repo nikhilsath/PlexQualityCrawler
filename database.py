@@ -159,3 +159,14 @@ def get_all_files():
 
     conn.close()
     return files
+
+def get_filtered_files(query):
+    """Fetch files using a custom query."""
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+
+    cursor.execute(query)
+    files = cursor.fetchall()
+
+    conn.close()
+    return files

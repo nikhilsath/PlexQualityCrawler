@@ -22,7 +22,7 @@ MOVIE_PATH = get_scan_path()  # Dynamically set scan path
 # Configure logging
 logging.basicConfig(
     filename="plex_quality_crawler.log",
-    level=logging.DEBUG,  # Ensure debug logs are captured
+    level=logging.INFO,  
     format="%(asctime)s - %(levelname)s - %(message)s"
 )
 

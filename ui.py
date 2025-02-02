@@ -16,17 +16,20 @@ logging.basicConfig(
     format="%(asctime)s - %(levelname)s - %(message)s"
 )
 
-class FileTableModel(QAbstractTableModel):
-    """Model for displaying scanned file data in a QTableView."""
-    
+#Model for displaying scanned file data in a QTableView."""
+class FileTableModel(QAbstractTableModel):    
     def __init__(self):
         super().__init__()
-        self.load_data()
+        self.load_filtered_data()
 
-    def load_data(self):
-        """Fetch data from the database."""
-        self.data = database.get_all_files()  # Fetch file records from DB
-        self.headers = ["File Name", "File Type", "File Size", "Last Modified"]
+    def load_filtered_data(self, query=None):
+    #Fetch data from the database with optional filtering.
+        if query:
+            self.data = database.get_filtered_files(query)
+        else:
+            self.data = database.get_all_files()  # Default to all files
+            self.layoutChanged.emit()  # Refresh UI
+            self.headers = ["File Name", "File Type", "File Size", "Last Modified"]
 
     def rowCount(self, parent=None):
         return len(self.data)
@@ -43,6 +46,11 @@ class FileTableModel(QAbstractTableModel):
         if role == Qt.ItemDataRole.DisplayRole and orientation == Qt.Orientation.Horizontal:
             return self.headers[section]
         return None
+
+#Filters the table to display only video files.
+def show_videos_only():
+    query = "SELECT file_name, file_type, file_size, file_modified FROM FileRecords WHERE file_type IN ('.mp4', '.mkv', '.avi', '.mpg', '.mpeg', '.vob')"
+    table_model.load_filtered_data(query)
 
 
 # Opens a file dialog to select the scan path and saves it."""
@@ -131,6 +139,11 @@ layout.addWidget(table_view)
 
 # Buttons Section
 buttons_layout = QVBoxLayout()
+
+# Show Videos Only Button
+show_videos_button = QPushButton("Show Videos Only")
+buttons_layout.addWidget(show_videos_button)
+show_videos_button.clicked.connect(show_videos_only)
 
 # Select Scan Path Button
 select_path_button = QPushButton("Select Scan Path")
