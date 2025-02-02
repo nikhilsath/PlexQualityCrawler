@@ -4,7 +4,7 @@ import logging
 import sqlite3 
 import database  
 
-DB_FILE = "plex_quality_crawler.db"  # ✅ Define the database file
+DB_FILE = "plex_quality_crawler.db"  # Define the database file
 
 def get_scan_path():
     """Retrieves the saved scan path from the database."""
@@ -22,11 +22,11 @@ MOVIE_PATH = get_scan_path()  # Dynamically set scan path
 # Configure logging
 logging.basicConfig(
     filename="plex_quality_crawler.log",
-    level=logging.INFO,
+    level=logging.DEBUG,  # Ensure debug logs are captured
     format="%(asctime)s - %(levelname)s - %(message)s"
-
 )
-#Fetches all pending scans from the database.
+
+# Fetches all pending scans from the database.
 def fetch_pending_scans():
     pending_scans = database.get_pending_scans()
     
@@ -38,13 +38,13 @@ def fetch_pending_scans():
     return pending_scans
 
 def mark_scan_in_progress(scan_id):
-    #Updates a scan request's status to 'in_progress'
+    """Updates a scan request's status to 'in_progress'."""
     database.update_scan_status(scan_id, "in_progress")
     logging.info(f"Scan ID {scan_id} marked as 'in_progress'.")
 
-#Scans the SMB directory and collects metadata only for new or modified files.
+# Scans the SMB directory and collects metadata only for new or modified files.
 def scan_directory():
-
+    """Scans the directory and collects metadata."""
     if not os.path.exists(MOVIE_PATH):
         logging.error(f"Scan failed: Directory '{MOVIE_PATH}' not found.")
         return []
@@ -55,48 +55,45 @@ def scan_directory():
             file_path = os.path.join(root, file)
             file_size = os.path.getsize(file_path)
             file_modified = time.ctime(os.path.getmtime(file_path))
+            file_type = os.path.splitext(file)[1].lower() if os.path.splitext(file)[1] else "unknown"
 
-            # Check if file exists in DB and if it has changed
-            existing_file = database.get_file_metadata(file_path)
-            if existing_file:
-                _, _, old_size, old_modified, _ = existing_file
-                if file_size == old_size and file_modified == old_modified:
-                    continue  # Skip unchanged files
-
-            file_type = os.path.splitext(file)[1].lower()  # Extract file extension
+            # Debugging print before appending to the list
+            logging.debug(f"Scanned file details: {file}, {file_path}, {file_size}, {file_modified}, {file_type}")
+            print(f"DEBUG: {file}, {file_path}, {file_size}, {file_modified}, {file_type}")
 
             scanned_files.append((file, file_path, file_size, file_modified, file_type))
 
-    logging.info(f"Incremental scan completed: Found {len(scanned_files)} new or modified files.")
+    logging.debug(f"Final scanned files list: {scanned_files}")
     return scanned_files
 
-
-
 if __name__ == "__main__":
-    pending_scans = fetch_pending_scans()
+    while True:
+        pending_scans = fetch_pending_scans()
 
-    for scan in pending_scans:
-        scan_id = scan[0]  # ✅ Extract only the scan ID from the tuple
-        try:
-            mark_scan_in_progress(scan_id)
-            logging.info(f"Processing scan ID: {scan_id}")
+        if not pending_scans:
+            logging.info("No more pending scans. Scanner is now idle.")
+            break  # Exit the loop if there are no pending scans
 
-            # Scan only new or modified files
-            scanned_files = scan_directory()
+        for scan in pending_scans:
+            scan_id = scan[0]  # Extract only the scan ID from the tuple
+            try:
+                mark_scan_in_progress(scan_id)
+                logging.info(f"Processing scan ID: {scan_id}")
 
-            # Store results in DB
-            for file, file_path, file_size, file_modified, file_type in scanned_files:
-                database.store_scan_results(file, file_path, file_size, file_modified, file_type)
+                scanned_files = scan_directory()
+                
+                if not all(len(entry) == 5 for entry in scanned_files):
+                    logging.error(f"Invalid tuple structure detected in scan ID {scan_id}: {scanned_files}")
+                    raise ValueError("Scanned files contain invalid tuples")
 
+                for file, file_path, file_size, file_modified, file_type in scanned_files:
+                    database.store_scan_results(file, file_path, file_size, file_modified, file_type)
 
-            # Mark deleted files
-            database.mark_deleted_files()
+                database.mark_deleted_files()
+                database.update_scan_status(scan_id, "completed")
+                logging.info(f"Scan ID {scan_id} completed.")
 
-            # Mark scan as completed
-            database.update_scan_status(scan_id, "completed")
-            logging.info(f"Scan ID {scan_id} completed.")
-
-        except Exception as e:
-            logging.error(f"Error processing scan ID {scan_id}: {str(e)}")
-            database.update_scan_status(scan_id, "failed")
-
+            except Exception as e:
+                logging.error(f"Error processing scan ID {scan_id}: {str(e)}")
+                database.update_scan_status(scan_id, "failed")
+                logging.info(f"Scan ID {scan_id} marked as failed.")
