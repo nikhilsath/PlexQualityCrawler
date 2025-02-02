@@ -28,8 +28,10 @@ class FileTableModel(QAbstractTableModel):
             self.data = database.get_filtered_files(query)
         else:
             self.data = database.get_all_files()  # Default to all files
-            self.layoutChanged.emit()  # Refresh UI
-            self.headers = ["File Name", "File Type", "File Size", "Last Modified"]
+
+        self.layoutChanged.emit()  # Refresh UI
+        file_count_label.setText(f"Total Files: {len(self.data)}")  # ✅ Update count dynamically
+        self.headers = ["File Name", "File Type", "File Size", "Last Modified"]
 
     def rowCount(self, parent=None):
         return len(self.data)
@@ -52,6 +54,9 @@ def show_videos_only():
     query = "SELECT file_name, file_type, file_size, file_modified FROM FileRecords WHERE file_type IN ('.mp4', '.mkv', '.avi', '.mpg', '.mpeg', '.vob')"
     table_model.load_filtered_data(query)
 
+def update_file_count():
+    """Updates the file count label based on the current table data."""
+    file_count_label.setText(f"Total Files: {len(table_model.data)}")
 
 # Opens a file dialog to select the scan path and saves it."""
 def select_scan_path():
@@ -59,7 +64,6 @@ def select_scan_path():
     
     if folder_path:
         database.save_scan_path(folder_path)  # ✅ Save path to database
-        scan_path_label.setText(f"Selected Scan Path: {folder_path}")  # ✅ Update UI label
         database.add_scan_request()  # ✅ Automatically add scan request
         logging.info(f"Scan path updated to: {folder_path}. Scan request added.")
 
@@ -107,23 +111,15 @@ window = QWidget()
 window.setWindowTitle("Plex Quality Crawler")  # Set window title
 window.resize(600, 400)  # Window size
 
-# Label to display the selected scan path
-scan_path_label = QLabel("Selected Scan Path: Not Set", window)
-scan_path_label.move(20, 20)  # Adjust position
-scan_path_label.resize(350, 30)  # Set width and height
-
-
-# Select Scan Path Button
-select_path_button = QPushButton("Select Scan Path", window)
-select_path_button.move(20, 100)
-select_path_button.clicked.connect(select_scan_path)
-
 # Open Logs Button
 logs_button = QPushButton("Open Logs", window)
 logs_button.move(20, 130) 
 logs_button.clicked.connect(open_logs)
 
 layout = QVBoxLayout()
+# File Count
+file_count_label = QLabel("Total Files: 0")
+layout.addWidget(file_count_label)
 
 # Table View
 table_view = QTableView()
