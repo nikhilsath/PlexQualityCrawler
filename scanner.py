@@ -45,13 +45,12 @@ def scan_directory(scan_path):
             file_modified = time.ctime(os.path.getmtime(file_path))
             file_type = os.path.splitext(file)[1].lower() if os.path.splitext(file)[1] else "unknown"
 
-            # Debugging print before appending to the list
-            logging.debug(f"Scanned file details: {file}, {file_path}, {file_size}, {file_modified}, {file_type}")
-            print(f"DEBUG: {file}, {file_path}, {file_size}, {file_modified}, {file_type}")
+            # Logging scan details at INFO level
+            logging.info(f"Scanned file: {file}, Path: {file_path}, Size: {file_size}, Modified: {file_modified}, Type: {file_type}")
 
             scanned_files.append((file, file_path, file_size, file_modified, file_type))
 
-    logging.debug(f"Final scanned files list: {scanned_files}")
+    logging.info(f"Final scanned files list: {scanned_files}")
     return scanned_files
 
 # MAIN EXECUTION LOOP
@@ -82,8 +81,11 @@ if __name__ == "__main__":
 
                 for file, file_path, file_size, file_modified, file_type in scanned_files:
                     database.store_scan_results(file, file_path, file_size, file_modified, file_type)
-
+                # Remove files not found from DB 
                 database.mark_deleted_files()
+                # Populate top folder column
+                database.update_top_folders()
+                # Mark scan as completed
                 database.update_scan_status(scan_id, "completed")
                 logging.info(f"Scan ID {scan_id} completed.")
 

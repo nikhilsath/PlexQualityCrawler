@@ -1,6 +1,7 @@
 import sqlite3
 import os
 import logging
+import re
 
 
 # Configure logging
@@ -10,8 +11,9 @@ logging.basicConfig(
     format="%(asctime)s - %(levelname)s - %(message)s"
 )
 
-
+# Variables
 DB_FILE = "plex_quality_crawler.db"
+TOP_FOLDER_REGEX = r"/Volumes/([^/]+)"
 
 #enables wal mode for concurrency
 def enable_wal_mode():
@@ -38,6 +40,7 @@ def initialize_database():
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS ScanQueue (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
+            scan_path TEXT,
             status TEXT NOT NULL DEFAULT 'pending',
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
@@ -52,7 +55,8 @@ def initialize_database():
             file_path TEXT NOT NULL UNIQUE,
             file_size INTEGER,
             file_modified TEXT,
-            last_scanned TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            last_scanned TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            top_folder TEXT  -- New column
         )
     ''')
 
@@ -120,19 +124,6 @@ def get_pending_scans():
     conn.close()
     return pending_scans
 
-#Fetches metadata for a specific file from the database.
-def get_file_metadata(file_path):
-    conn = sqlite3.connect(DB_FILE)
-    cursor = conn.cursor()
-
-    cursor.execute("SELECT file_name, file_type, file_size, file_modified, file_path, last_scanned FROM FileRecords WHERE file_path = ?", (file_path,))
-    result = cursor.fetchone()
-
-    conn.close()
-    return result  # Returns a tuple if file exists, otherwise None
-
-
-
 def update_scan_status(scan_id, new_status):
     #Updates the status of a scan request in the database
     conn = sqlite3.connect(DB_FILE)
@@ -142,7 +133,29 @@ def update_scan_status(scan_id, new_status):
     conn.close()
 
     logging.info(f"Scan ID {scan_id} status updated to {new_status}.")
+    
+def extract_top_folder(file_path):
+    """Extracts the first folder after 'Volumes' in a file path."""
+    match = re.search(TOP_FOLDER_REGEX, file_path)
+    return match.group(1) if match else None
 
+def update_top_folders():
+    """Updates 'top_folder' for all files in FileRecords where it is NULL."""
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+
+    # Fetch files where top_folder is NULL
+    cursor.execute("SELECT id, file_path FROM FileRecords WHERE top_folder IS NULL")
+    rows = cursor.fetchall()
+
+    batch = [(extract_top_folder(file_path), file_id) for file_id, file_path in rows if extract_top_folder(file_path)]
+
+    if batch:
+        cursor.executemany("UPDATE FileRecords SET top_folder = ? WHERE id = ?", batch)
+        conn.commit()
+        logging.info(f"Updated top_folder for {len(batch)} files.")
+
+    conn.close()
 if __name__ == "__main__":
     initialize_database()
 

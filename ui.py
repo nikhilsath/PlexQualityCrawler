@@ -109,11 +109,6 @@ window = QWidget()
 window.setWindowTitle("Plex Quality Crawler")  # Set window title
 window.resize(600, 400)  # Window size
 
-# Open Logs Button
-logs_button = QPushButton("Open Logs", window)
-logs_button.move(20, 130) 
-logs_button.clicked.connect(open_logs)
-
 layout = QVBoxLayout()
 # File Count
 file_count_label = QLabel("Total Files: 0")
