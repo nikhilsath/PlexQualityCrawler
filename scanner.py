@@ -16,7 +16,7 @@ logging.basicConfig(
 # Fetches all pending scans from the database.
 def fetch_pending_scans():
     pending_scans = database.get_pending_scans()
-    print(f"DEBUG: Pending Scans Retrieved -> {pending_scans}")  # 🔍 Debugging step
+    print(f"Pending Scans Retrieved -> {pending_scans}")  # log to console
 
     if not pending_scans:
         logging.info("No pending scans found.")
