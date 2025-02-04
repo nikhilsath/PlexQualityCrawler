@@ -13,18 +13,6 @@ logging.basicConfig(
     format="%(asctime)s - %(levelname)s - %(message)s"
 )
 
-# Fetches all pending scans from the database.
-def fetch_pending_scans():
-    pending_scans = database.get_pending_scans()
-    print(f"Pending Scans Retrieved -> {pending_scans}")  # log to console
-
-    if not pending_scans:
-        logging.info("No pending scans found.")
-        return []
-
-    logging.info(f"Found {len(pending_scans)} pending scan(s).")
-    return pending_scans  # Ensure function returns a list of tuples (scan_id, scan_path)
-
 # Updates a scan request's status to 'in_progress'
 def mark_scan_in_progress(scan_id):
     database.update_scan_status(scan_id, "in_progress")
@@ -53,43 +41,27 @@ def scan_directory(scan_path):
     logging.info(f"Final scanned files list: {scanned_files}")
     return scanned_files
 
-# MAIN EXECUTION LOOP
+# MAIN EXECUTION 
 if __name__ == "__main__":
-    while True:
-        pending_scans = fetch_pending_scans()
+    selected_folders = database.get_selected_top_folders()  # Fetch active scan targets
+    logging.info(f"Fetched scan targets: {selected_folders}")
 
-        if not pending_scans:
-            logging.info("No more pending scans. Scanner is now idle.")
-            break  # Exit the loop if there are no pending scans
+    if not selected_folders:
+        logging.info("No active scan targets found. Exiting scanner.")
+        sys.exit(0)  # Exit if no folders are selected
 
-        for scan in pending_scans:
-            if len(scan) < 2:
-                logging.error(f"Invalid scan entry found in ScanQueue: {scan}")
-                continue  # Skip this entry
+    for folder in selected_folders:
+        scan_path = f"/Volumes/{folder}"  # Convert top_folder to full path
+        logging.info(f"Scanning: {folder}")
 
-            scan_id, scan_path = scan  # Extract scan ID and scan path
-            
-            try:
-                mark_scan_in_progress(scan_id)
-                logging.info(f"Processing scan ID: {scan_id} with path {scan_path}")
+        scanned_files = scan_directory(scan_path)  # Perform scan
 
-                scanned_files = scan_directory(scan_path)
-                
-                if not all(len(entry) == 5 for entry in scanned_files):
-                    logging.error(f"Invalid tuple structure detected in scan ID {scan_id}: {scanned_files}")
-                    raise ValueError("Scanned files contain invalid tuples")
+        if scanned_files:
+            for file, file_path, file_size, file_modified, file_type in scanned_files:
+                database.store_scan_results(file, file_path, file_size, file_modified, file_type)
 
-                for file, file_path, file_size, file_modified, file_type in scanned_files:
-                    database.store_scan_results(file, file_path, file_size, file_modified, file_type)
-                # Remove files not found from DB 
-                database.mark_deleted_files()
-                # Populate top folder column
-                database.update_top_folders()
-                # Mark scan as completed
-                database.update_scan_status(scan_id, "completed")
-                logging.info(f"Scan ID {scan_id} completed.")
+        database.update_last_scanned(folder)  # Update last scanned timestamp
+        time.sleep(1)  # Small delay
 
-            except Exception as e:
-                logging.error(f"Error processing scan ID {scan_id}: {str(e)}")
-                database.update_scan_status(scan_id, "failed")
-                logging.info(f"Scan ID {scan_id} marked as failed.")
+    logging.info("Scanning completed. Exiting scanner.")
+
