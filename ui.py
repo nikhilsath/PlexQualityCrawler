@@ -218,11 +218,12 @@ def start_scanner():
         QMessageBox.warning(window, "Error", f"Could not start scanner: {str(e)}")
 
 def toggle_scan_target(state, folder):
-    """Adds or removes a scan target based on the switch state."""
+    """Updates scan target status instead of trying to reinsert."""
     if state == 2:  # Checked (ON)
-        database.add_scan_target(folder)
+        database.activate_scan_target(folder)  # ✅ Change status to 'active'
     else:  # Unchecked (OFF)
-        database.remove_scan_target(folder)
+        database.deactivate_scan_target(folder)  # ✅ Change status to 'inactive'
+
 
 # Create the application
 app = QApplication(sys.argv)

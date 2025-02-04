@@ -434,3 +434,19 @@ def delete_scan_target(top_folder):
     conn.commit()
     conn.close()
     logging.info(f"Deleted scan target from database: {top_folder}")
+
+def activate_scan_target(top_folder):
+    """Marks a scan target as 'active' instead of inserting a duplicate."""
+    with sqlite3.connect(DB_FILE) as conn:
+        cursor = conn.cursor()
+        cursor.execute("UPDATE ScanTargets SET status = 'active' WHERE top_folder = ?", (top_folder,))
+        conn.commit()
+        logging.info(f"Scan target '{top_folder}' activated.")
+
+def deactivate_scan_target(top_folder):
+    """Marks a scan target as 'inactive' instead of removing it."""
+    with sqlite3.connect(DB_FILE) as conn:
+        cursor = conn.cursor()
+        cursor.execute("UPDATE ScanTargets SET status = 'inactive' WHERE top_folder = ?", (top_folder,))
+        conn.commit()
+        logging.info(f"Scan target '{top_folder}' deactivated.")
