@@ -21,21 +21,24 @@ def mark_scan_in_progress(scan_id):
     database.update_scan_status(scan_id, "in_progress")
     logging.info(f"Scan ID {scan_id} marked as 'in_progress'.")
 
-# Remounts failed scans
 def remount_drive(scan_path):
     """Attempts to remount the networked SMB drive if it's unmounted."""
     
-    # Extract the volume name
     volume_name = scan_path.split("/")[2]  # ✅ Extracts the SMB share name
-    smb_share_path = f"smb://{volume_name}"  # ✅ Construct SMB path
+    smb_server = "smb://nikhil@MBP-Server._smb._tcp.local"  # ✅ Use correct SMB server
+    smb_share_path = f"{smb_server}/{volume_name.replace(' ', '%20')}"  # ✅ Escape spaces
 
-    logging.warning(f"Network drive '{volume_name}' appears to be unmounted. Attempting to reconnect...")
+    logging.warning(f"Network drive '{volume_name}' appears to be unmounted. Attempting to reconnect using {smb_share_path}...")
 
     try:
-        # ✅ Use `open` to mount the SMB share
-        result = subprocess.run(["open", shlex.quote(smb_share_path)], capture_output=True, text=True)
+        # ✅ Log the command being executed
+        mount_command = ["open", smb_share_path]
+        logging.info(f"Executing mount command: {' '.join(mount_command)}")
 
-        # ✅ Give some time for the mount to complete
+        # ✅ Run the exact command that worked manually
+        result = subprocess.run(mount_command, capture_output=True, text=True)
+
+        # ✅ Give time for the mount to complete
         time.sleep(5)
 
         # ✅ Check if the share is now mounted
