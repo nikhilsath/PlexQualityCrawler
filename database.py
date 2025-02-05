@@ -18,59 +18,28 @@ TOP_FOLDER_REGEX = r"/Volumes/([^/]+)"
 MAX_RETRIES = 5  # Retry 5 times before failing
 RETRY_DELAY = 0.5  # Wait 0.5 seconds between retries
 
-#enables wal mode for concurrency
+def get_connection():
+    """Returns a database connection."""
+    return sqlite3.connect(DB_FILE)
+
 def enable_wal_mode():
+    """Enable Write-Ahead Logging (WAL) mode for better concurrency."""
     try:
-        conn = sqlite3.connect(DB_FILE)
+        conn = get_connection()
         cursor = conn.cursor()
-        cursor.execute("PRAGMA journal_mode=WAL;")
+        cursor.execute("PRAGMA journal_mode=WAL;")  # Enable WAL mode
         conn.commit()
         conn.close()
         logging.info("WAL mode enabled successfully.")
     except sqlite3.OperationalError as e:
         logging.error(f"Failed to enable WAL mode: {e}")
 
-
-enable_wal_mode() 
-
-
 def initialize_database():
-    """Initializes the database and ensures required tables exist."""
-    conn = sqlite3.connect(DB_FILE)
+    """Ensures database and required tables exist before proceeding."""
+    conn = get_connection()
     cursor = conn.cursor()
 
-    # Check if the Settings table already has the correct schema
-    cursor.execute("PRAGMA table_info(Settings);")
-    columns = {row[1] for row in cursor.fetchall()}  # Get column names
-
-    if "key" not in columns or "value" not in columns:
-        logging.warning("Updating Settings table to new schema.")
-
-        # Backup old table if it exists
-        cursor.execute("ALTER TABLE Settings RENAME TO Settings_backup;")
-
-        # Create new Settings table
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS Settings (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                key TEXT UNIQUE NOT NULL,
-                value TEXT NOT NULL
-            )
-        ''')
-
-        # Migrate existing scan path if available
-        cursor.execute("SELECT scan_path FROM Settings_backup LIMIT 1;")
-        existing_path = cursor.fetchone()
-        if existing_path:
-            cursor.execute("INSERT INTO Settings (key, value) VALUES ('scan_path', ?);", (existing_path[0],))
-
-        # Drop old table
-        cursor.execute("DROP TABLE Settings_backup;")
-
-        conn.commit()
-        logging.info("Database schema updated successfully.")
-
-    # Ensure ScanTargets table exists
+    # Create tables if they do not exist
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS ScanTargets (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -80,10 +49,64 @@ def initialize_database():
         )
     ''')
 
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS FileRecords (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            file_name TEXT NOT NULL,
+            file_type TEXT,
+            file_path TEXT NOT NULL UNIQUE,
+            file_size INTEGER,
+            file_modified TEXT,
+            last_scanned TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            top_folder TEXT
+        )
+    ''')
+
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS Settings (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            key TEXT UNIQUE NOT NULL,
+            value TEXT NOT NULL
+        )
+    ''')
+
     conn.commit()
     conn.close()
-
     logging.info("Database initialized successfully.")
+
+def validate_database():
+    """Runs a quick check to confirm all required tables exist."""
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    required_tables = {"ScanTargets", "FileRecords", "Settings"}
+    
+    # Fetch all existing tables
+    cursor.execute("SELECT name FROM sqlite_master WHERE type='table';")
+    existing_tables = {row[0] for row in cursor.fetchall()}
+    
+    conn.close()
+
+    if not required_tables.issubset(existing_tables):
+        logging.error("Database is missing required tables. Reinitializing...")
+        return False  # Trigger reinitialization
+    
+    return True  # Database is valid
+
+# ✅ Enable WAL mode first
+enable_wal_mode()
+
+# ✅ Ensure database exists & is valid before proceeding
+if not os.path.exists(DB_FILE):
+    logging.info("Database file not found. Initializing database...")
+    initialize_database()
+    time.sleep(1)  # Ensure tables are created before queries
+elif not validate_database():
+    logging.warning("Reinitializing database due to missing tables.")
+    initialize_database()
+    time.sleep(1)
+else:
+    logging.info("Database is valid. Skipping initialization.")
 
 #Saves the selected scan path in the database.
 def save_scan_path(scan_path):
