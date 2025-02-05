@@ -298,6 +298,15 @@ def initialize_database():
         )
     ''')
 
+    # Add the Settings table
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS Settings (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            key TEXT UNIQUE NOT NULL,
+            value TEXT NOT NULL
+        )
+    ''')
+
     conn.commit()
     conn.close()
     logging.info("Database initialized successfully.")
@@ -310,7 +319,8 @@ def save_scan_path(scan_path):
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS Settings (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            scan_path TEXT NOT NULL
+            key TEXT UNIQUE NOT NULL,
+            value TEXT NOT NULL
         )
     ''')
 
