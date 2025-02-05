@@ -35,11 +35,42 @@ enable_wal_mode()
 
 
 def initialize_database():
-    #Initializes the database if it doesn't exist and ensures required tables are created.
+    """Initializes the database and ensures required tables exist."""
     conn = sqlite3.connect(DB_FILE)
     cursor = conn.cursor()
 
-    # Create the ScanTargets table with status and last_scanned
+    # Check if the Settings table already has the correct schema
+    cursor.execute("PRAGMA table_info(Settings);")
+    columns = {row[1] for row in cursor.fetchall()}  # Get column names
+
+    if "key" not in columns or "value" not in columns:
+        logging.warning("Updating Settings table to new schema.")
+
+        # Backup old table if it exists
+        cursor.execute("ALTER TABLE Settings RENAME TO Settings_backup;")
+
+        # Create new Settings table
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS Settings (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                key TEXT UNIQUE NOT NULL,
+                value TEXT NOT NULL
+            )
+        ''')
+
+        # Migrate existing scan path if available
+        cursor.execute("SELECT scan_path FROM Settings_backup LIMIT 1;")
+        existing_path = cursor.fetchone()
+        if existing_path:
+            cursor.execute("INSERT INTO Settings (key, value) VALUES ('scan_path', ?);", (existing_path[0],))
+
+        # Drop old table
+        cursor.execute("DROP TABLE Settings_backup;")
+
+        conn.commit()
+        logging.info("Database schema updated successfully.")
+
+    # Ensure ScanTargets table exists
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS ScanTargets (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -49,22 +80,9 @@ def initialize_database():
         )
     ''')
 
-    # Create the FileRecords table
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS FileRecords (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            file_name TEXT NOT NULL,
-            file_type TEXT,
-            file_path TEXT NOT NULL UNIQUE,
-            file_size INTEGER,
-            file_modified TEXT,
-            last_scanned TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            top_folder TEXT  -- New column
-        )
-    ''')
-
     conn.commit()
     conn.close()
+
     logging.info("Database initialized successfully.")
 
 #Saves the selected scan path in the database.
@@ -75,9 +93,11 @@ def save_scan_path(scan_path):
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS Settings (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            scan_path TEXT NOT NULL
+            key TEXT UNIQUE NOT NULL,
+            value TEXT NOT NULL
         )
     ''')
+
 
     # Store only one scan path at a time (overwrite previous entry)
     cursor.execute("DELETE FROM Settings;")  # Clear old path
@@ -87,6 +107,31 @@ def save_scan_path(scan_path):
     conn.close()
 
     logging.info(f"Scan path saved: {scan_path}")
+
+def get_selected_smb_server():
+    """Fetch the last-selected SMB server from the database."""
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+    cursor.execute("SELECT value FROM Settings WHERE key = 'smb_server'")
+    result = cursor.fetchone()
+    conn.close()
+    return result[0] if result else None  # Return server or None if not found
+
+def set_selected_smb_server(smb_server):
+    """Update or insert the selected SMB server in the database."""
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+
+    # Insert or update
+    cursor.execute('''
+        INSERT INTO Settings (key, value) VALUES ('smb_server', ?)
+        ON CONFLICT(key) DO UPDATE SET value = excluded.value
+    ''', (smb_server,))
+
+    conn.commit()
+    conn.close()
+    logging.info(f"Updated selected SMB server: {smb_server}")
+
 
 def mark_deleted_files():
     #Marks files as deleted if they are no longer found in the scanned directory

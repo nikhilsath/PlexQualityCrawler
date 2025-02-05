@@ -1,12 +1,13 @@
 import sys
 import os
+import re
 import platform
 import subprocess
 import logging
 import database
 from PyQt6.QtWidgets import (
     QApplication, QWidget, QLabel, QPushButton, QMessageBox, QFileDialog, QDialog, QListWidget,
-    QTableView, QVBoxLayout, QHBoxLayout, QCheckBox, QAbstractItemView
+    QTableView, QVBoxLayout, QHBoxLayout, QCheckBox, QAbstractItemView, QComboBox
 )
 from PyQt6.QtCore import QAbstractTableModel, Qt, QTimer
 
@@ -180,7 +181,6 @@ def remove_selected_scans(dialog, scan_list):
         load_top_folders()  # Refresh UI
         dialog.accept()  # Close dialog
 
-
 def open_logs():
     """Opens the log file (Cross-Platform)."""
     if not os.path.exists(LOG_FILE):
@@ -199,9 +199,17 @@ def open_logs():
         QMessageBox.warning(window, "Error", f"Could not open log file: {str(e)}")
 
 def start_scanner():
-    """Starts scanning all active scan targets."""
+    """Starts scanning all active scan targets, ensuring an SMB server is selected first."""
+    
     selected_folders = database.get_selected_top_folders()
+    selected_server = smb_dropdown.currentText()  # ✅ Fetch the selected SMB server
+
     logging.info(f"User clicked Start Scan. Active scan targets: {selected_folders}")
+
+    if not selected_server:
+        logging.warning("No SMB server selected. Scanner will not start.")
+        QMessageBox.warning(window, "No SMB Server", "Please select an SMB server before starting the scan.")
+        return
 
     if not selected_folders:
         logging.warning("No active scan targets found. Scanner will not start.")
@@ -209,13 +217,14 @@ def start_scanner():
         return
 
     try:
-        logging.info("Attempting to start scanner.py")
+        logging.info(f"Attempting to start scanner.py with SMB server: {selected_server}")
         process = subprocess.Popen(["python3", "scanner.py"])
         logging.info(f"Scanner started successfully with PID: {process.pid}")
         QMessageBox.information(window, "Scanning Started", "Scanning has started for selected folders.")
     except Exception as e:
         logging.error(f"Error starting scanner: {str(e)}")
         QMessageBox.warning(window, "Error", f"Could not start scanner: {str(e)}")
+
 
 def toggle_scan_target(state, folder):
     """Updates scan target status instead of trying to reinsert."""
@@ -232,6 +241,41 @@ app = QApplication(sys.argv)
 window = QWidget()
 window.setWindowTitle("Plex Quality Crawler")
 window.resize(600, 400)
+
+# SMB Server Selection Section
+smb_layout = QHBoxLayout()
+
+# Dropdown (QComboBox)
+smb_dropdown = QComboBox()
+smb_layout.addWidget(smb_dropdown)
+
+# Fetch available SMB servers (dummy list for now, will improve later)
+available_servers = ["smb://MBP-Server.local", "smb://NAS-Server.local", "smb://File-Server.local"]
+smb_dropdown.addItems(available_servers)
+
+# Function to handle SMB server selection change
+def update_selected_smb_server():
+    selected_server = smb_dropdown.currentText()
+    database.set_selected_smb_server(selected_server)  # ✅ Save to database
+    logging.info(f"User selected new SMB server: {selected_server}")
+
+# Connect dropdown selection change to the function
+smb_dropdown.currentIndexChanged.connect(update_selected_smb_server)
+
+
+# Load last-selected server from database
+last_selected_server = database.get_selected_smb_server()
+if last_selected_server in available_servers:
+    smb_dropdown.setCurrentText(last_selected_server)
+else:
+    # ✅ If no server was stored, select the first available option
+    default_server = available_servers[0] if available_servers else None
+    smb_dropdown.setCurrentText(default_server)
+    database.set_selected_smb_server(default_server) 
+
+# Combine with existing layout
+main_layout.addLayout(smb_layout)
+
 
 # File Count
 file_count_label = QLabel("Total Files: 0")

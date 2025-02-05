@@ -6,6 +6,7 @@ import sqlite3
 import sys
 import database  
 import shlex 
+import database
 
 DB_FILE = "plex_quality_crawler.db"  # Define the database file
 
@@ -21,37 +22,38 @@ def mark_scan_in_progress(scan_id):
     database.update_scan_status(scan_id, "in_progress")
     logging.info(f"Scan ID {scan_id} marked as 'in_progress'.")
 
-def remount_drive(scan_path):
+def remount_drive(scan_path, smb_server):
     """Attempts to remount the networked SMB drive if it's unmounted."""
-    
-    volume_name = scan_path.split("/")[2]  # ✅ Extracts the SMB share name
-    smb_server = "smb://nikhil@MBP-Server._smb._tcp.local"  # ✅ Use correct SMB server
-    smb_share_path = f"{smb_server}/{volume_name.replace(' ', '%20')}"  # ✅ Escape spaces
+    volume_name = scan_path.split("/")[2]  # Extracts the volume name
+    smb_share_path = f"smb://{smb_server}/{volume_name}"
 
-    logging.warning(f"Network drive '{volume_name}' appears to be unmounted. Attempting to reconnect using {smb_share_path}...")
+    logging.warning(f"Network drive '{volume_name}' appears to be unmounted. Attempting to reconnect...")
+
+    # ✅ Check if already mounted
+    if os.path.exists(f"/Volumes/{volume_name}"):
+        logging.info(f"Drive '{volume_name}' is already mounted at /Volumes/{volume_name}. No remount needed.")
+        return True
 
     try:
-        # ✅ Log the command being executed
-        mount_command = ["open", smb_share_path]
-        logging.info(f"Executing mount command: {' '.join(mount_command)}")
+        # ✅ Use `open smb://` instead of `mount_smbfs`
+        result = subprocess.run(["open", smb_share_path], capture_output=True, text=True)
+        logging.info(f"Executed: open {smb_share_path}")
 
-        # ✅ Run the exact command that worked manually
-        result = subprocess.run(mount_command, capture_output=True, text=True)
-
-        # ✅ Give time for the mount to complete
+        # ✅ Give time for remounting
         time.sleep(5)
 
         # ✅ Check if the share is now mounted
-        if os.path.exists(scan_path):
-            logging.info(f"SMB share '{volume_name}' successfully reconnected.")
+        if os.path.ismount(f"/Volumes/{volume_name}"):
+            logging.info(f"SMB share '{smb_share_path}' successfully remounted.")
             return True
         else:
-            logging.error(f"Failed to mount SMB share '{smb_share_path}'. Drive still not found.")
+            logging.error(f"Failed to remount SMB share '{smb_share_path}'.")
             return False
 
     except Exception as e:
         logging.error(f"Error while attempting to mount SMB share '{smb_share_path}': {str(e)}")
         return False
+
 
 # Scans the SMB directory and collects metadata only for new or modified files.
 def scan_directory(scan_path):
@@ -61,7 +63,9 @@ def scan_directory(scan_path):
         logging.error(f"Scan failed: Directory '{scan_path}' not found.")
 
         # ✅ Attempt to remount if missing
-        if remount_drive(scan_path):
+        smb_server = database.get_selected_smb_server()  # Fetch the selected SMB server
+        if remount_drive(scan_path, smb_server):
+
             logging.info(f"Retrying scan after remount: {scan_path}")
             time.sleep(5)  # ✅ Give time for remounting
             
