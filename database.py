@@ -108,6 +108,16 @@ def save_scan_path(scan_path):
 
     logging.info(f"Scan path saved: {scan_path}")
 
+def get_total_file_count():
+    """Returns the total number of scanned files."""
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+    cursor.execute("SELECT COUNT(*) FROM FileRecords")
+    total = cursor.fetchone()[0]
+    conn.close()
+    return total
+
+
 def get_selected_smb_server():
     """Fetch the last-selected SMB server from the database."""
     conn = sqlite3.connect(DB_FILE)

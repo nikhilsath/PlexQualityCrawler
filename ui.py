@@ -21,37 +21,6 @@ logging.basicConfig(
 )
 
 # Model for displaying scanned file data in a QTableView.
-class FileTableModel(QAbstractTableModel):
-    def __init__(self):
-        super().__init__()
-        self.load_filtered_data()
-
-    def load_filtered_data(self, query=None):
-        """Fetch data from the database with optional filtering."""
-        if query:
-            self.data = database.get_filtered_files(query)
-        else:
-            self.data = database.get_all_files()  # Default to all files
-
-        self.layoutChanged.emit()  # Refresh UI
-        file_count_label.setText(f"Total Files: {len(self.data)}")  # Update count dynamically
-        self.headers = ["File Name", "File Type", "File Size", "Last Modified"]
-
-    def rowCount(self, parent=None):
-        return len(self.data)
-
-    def columnCount(self, parent=None):
-        return len(self.headers)
-
-    def data(self, index, role=Qt.ItemDataRole.DisplayRole):
-        if role == Qt.ItemDataRole.DisplayRole:
-            return str(self.data[index.row()][index.column()])
-        return None
-
-    def headerData(self, section, orientation, role=Qt.ItemDataRole.DisplayRole):
-        if role == Qt.ItemDataRole.DisplayRole and orientation == Qt.Orientation.Horizontal:
-            return self.headers[section]
-        return None
 
 class ToggleSwitch(QCheckBox):
     """Custom QCheckBox styled to look like a switch."""
@@ -75,7 +44,6 @@ class ToggleSwitch(QCheckBox):
 main_layout = QVBoxLayout()
 switches_layout = QVBoxLayout()  # Dedicated layout for toggles
 buttons_layout = QVBoxLayout()
-table_layout = QVBoxLayout()
 
 def load_top_folders():
     """Fetches unique top folders, clears old switches, and updates the UI."""
@@ -99,14 +67,10 @@ def load_top_folders():
         switch.stateChanged.connect(lambda state, f=folder: toggle_scan_target(state, f))
         switches_layout.addWidget(switch)
 
-def show_videos_only():
-    """Filters the table to display only video files."""
-    query = "SELECT file_name, file_type, file_size, file_modified FROM FileRecords WHERE file_type IN ('.mp4', '.mkv', '.avi', '.mpg', '.mpeg', '.vob')"
-    table_model.load_filtered_data(query)
-
 def update_file_count():
-    """Updates the file count label based on the current table data."""
-    file_count_label.setText(f"Total Files: {len(table_model.data)}")
+    """Fetch total file count from the database and update the label."""
+    total_files = database.get_total_file_count()
+    file_count_label.setText(f"Total Files: {total_files}")
 
 def select_scan_path():
     """Allows the user to select a folder to scan, adds it as a scan target, and refreshes UI."""
@@ -221,6 +185,8 @@ def start_scanner():
         process = subprocess.Popen(["python3", "scanner.py"])
         logging.info(f"Scanner started successfully with PID: {process.pid}")
         QMessageBox.information(window, "Scanning Started", "Scanning has started for selected folders.")
+        QTimer.singleShot(5000, update_file_count)  # update file count after timer
+
     except Exception as e:
         logging.error(f"Error starting scanner: {str(e)}")
         QMessageBox.warning(window, "Error", f"Could not start scanner: {str(e)}")
@@ -279,19 +245,8 @@ main_layout.addLayout(smb_layout)
 
 # File Count
 file_count_label = QLabel("Total Files: 0")
-table_layout.addWidget(file_count_label)
+main_layout.addWidget(file_count_label)
 
-# Table View
-table_view = QTableView()
-table_model = FileTableModel()
-table_view.setModel(table_model)
-
-# Enable sorting & selection
-table_view.setSortingEnabled(True)
-table_view.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
-table_view.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
-
-table_layout.addWidget(table_view)
 
 # Buttons Section
 
@@ -315,14 +270,14 @@ logs_button.clicked.connect(open_logs)
 buttons_layout.addWidget(logs_button)
 
 # Combine layouts
-main_layout.addLayout(table_layout)
 main_layout.addLayout(switches_layout)
 main_layout.addLayout(buttons_layout)
 
 window.setLayout(main_layout)
 
 # Show the window
-load_top_folders()
+load_top_folders() #Load switches
+update_file_count() #Load file count
 window.show()
 
 # Run the application event loop
