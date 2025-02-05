@@ -49,3 +49,12 @@ def deactivate_scan_target(top_folder):
     conn.commit()
     conn.close()
     logging.info(f"Scan target '{top_folder}' deactivated.")
+
+def update_last_scanned(top_folder):
+    """Updates the last scanned timestamp for a top_folder."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("UPDATE ScanTargets SET last_scanned = CURRENT_TIMESTAMP WHERE top_folder = ?", (top_folder,))
+    conn.commit()
+    conn.close()
+    logging.info(f"Updated last scanned time for '{top_folder}'.")
