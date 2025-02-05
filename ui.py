@@ -5,6 +5,7 @@ import platform
 import subprocess
 import logging
 import database
+import database.settings
 from PyQt6.QtWidgets import (
     QApplication, QWidget, QLabel, QPushButton, QMessageBox, QFileDialog, QDialog, QListWidget,
     QTableView, QVBoxLayout, QHBoxLayout, QCheckBox, QAbstractItemView, QComboBox
@@ -16,7 +17,7 @@ LOG_FILE = os.path.join(os.getcwd(), "plex_quality_crawler.log")  # Log file pat
 # Configure logging
 logging.basicConfig(
     filename="plex_quality_crawler.log",
-    level=logging.INFO,
+    level=logging.DEBUG,
     format="%(asctime)s - %(levelname)s - %(message)s"
 )
 
@@ -194,10 +195,15 @@ def start_scanner():
 
 def toggle_scan_target(state, folder):
     """Updates scan target status instead of trying to reinsert."""
-    if state == 2:  # Checked (ON)
-        database.activate_scan_target(folder)  # ✅ Change status to 'active'
-    else:  # Unchecked (OFF)
-        database.deactivate_scan_target(folder)  # ✅ Change status to 'inactive'
+    logging.debug(f"Toggle event: {folder} set to {'active' if state == 2 else 'inactive'}")
+
+    try:
+        if state == 2:  # Checked (ON)
+            database.activate_scan_target(folder)  # ✅ Change status to 'active'
+        else:  # Unchecked (OFF)
+            database.deactivate_scan_target(folder)  # ✅ Change status to 'inactive'
+    except Exception as e:
+        logging.error(f"Error while toggling scan target '{folder}': {str(e)}")
 
 
 # Create the application
@@ -230,7 +236,7 @@ smb_dropdown.currentIndexChanged.connect(update_selected_smb_server)
 
 
 # Load last-selected server from database
-last_selected_server = database.get_selected_smb_server()
+last_selected_server = database.settings.get_selected_smb_server()
 if last_selected_server in available_servers:
     smb_dropdown.setCurrentText(last_selected_server)
 else:

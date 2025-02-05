@@ -6,7 +6,11 @@ import sqlite3
 import sys
 import database  
 import shlex 
-import database
+from database import db_connection
+from database import schema
+from database.db_connection import get_connection
+from database.schema import validate_database
+
 
 DB_FILE = "plex_quality_crawler.db"  # Define the database file
 
