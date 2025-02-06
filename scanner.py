@@ -8,7 +8,6 @@ import sys
 import database  
 from PyQt6.QtWidgets import QMessageBox
 from PyQt6.QtCore import QThread, pyqtSignal
-import shlex 
 
 # Global Variables
 DB_FILE = "plex_quality_crawler.db"  # Define the database file
@@ -220,13 +219,13 @@ def run_detailed_scan():
         logging.info(f"📂 Processing file: {file}")
         
         metadata = extract_metadata_ffprobe(file)
+        database.mark_file_as_scanned(file)  
         if metadata is None:
             logging.error(f"❌ Skipping {file} due to failed metadata extraction.")
             continue  # Move to the next file
 
         # ✅ Store metadata & mark as scanned (only once)
         database.update_video_metadata(file, metadata)
-        database.mark_file_as_scanned(file)
 
         # ✅ Log progress every 50 files instead of every single file
         if (i + 1) % 50 == 0:

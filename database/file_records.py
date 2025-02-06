@@ -79,3 +79,12 @@ def mark_file_as_scanned(file_path):
     conn.commit()
     conn.close()
     logging.info(f"Marked file as detailed scan completed: {file_path}")
+
+def mark_scan_attempted(file_path):
+    """Marks a file as having attempted a detailed scan, even if it fails."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("UPDATE FileRecords SET detailed_scan_attempted = 1 WHERE file_path = ?", (file_path,))
+    conn.commit()
+    conn.close()
+    logging.info(f"Marked file as attempted detailed scan: {file_path}")
