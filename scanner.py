@@ -2,17 +2,16 @@ import os
 import time
 import subprocess
 import logging
+import json
 import sqlite3 
 import sys
 import database  
+from PyQt6.QtWidgets import QMessageBox
 import shlex 
-from database import db_connection
-from database import schema
-from database.db_connection import get_connection
-from database.schema import validate_database
 
-
+# Global Variables
 DB_FILE = "plex_quality_crawler.db"  # Define the database file
+detailed_scan_running = False
 
 # Configure logging
 logging.basicConfig(
@@ -29,6 +28,11 @@ def mark_scan_in_progress(scan_id):
 def remount_drive(scan_path, smb_server):
     """Attempts to remount the networked SMB drive if it's unmounted."""
     volume_name = scan_path.split("/")[2]  # Extracts the volume name
+
+    # ✅ Ensure smb_server does NOT have "smb://" prefix
+    if smb_server.startswith("smb://"):
+        smb_server = smb_server.replace("smb://", "")
+
     smb_share_path = f"smb://{smb_server}/{volume_name}"
 
     logging.warning(f"Network drive '{volume_name}' appears to be unmounted. Attempting to reconnect...")
@@ -57,6 +61,7 @@ def remount_drive(scan_path, smb_server):
     except Exception as e:
         logging.error(f"Error while attempting to mount SMB share '{smb_share_path}': {str(e)}")
         return False
+
 
 
 # Scans the SMB directory and collects metadata only for new or modified files.
@@ -118,4 +123,141 @@ if __name__ == "__main__":
         time.sleep(1)  # Small delay
 
     logging.info("Scanning completed. Exiting scanner.")
+
+# Video Scan
+def extract_metadata_ffprobe(file_path):
+    """Extracts full metadata from ffprobe for video, audio, and subtitles."""
+    command = [
+        "ffprobe", "-v", "error", "-show_format", "-show_streams",
+        "-of", "json", file_path
+    ]
+    
+    result = subprocess.run(command, capture_output=True, text=True)
+
+    # ✅ Remove full JSON logging, just confirm success/failure
+    if result.returncode != 0 or not result.stdout.strip():
+        logging.error(f"❌ ffprobe failed for {file_path}: {result.stderr.strip()}")
+        return None  
+
+    try:
+        metadata = json.loads(result.stdout)
+    except json.JSONDecodeError:
+        logging.error(f"❌ Failed to parse ffprobe JSON for {file_path}")
+        return None  
+
+    if "streams" not in metadata:
+        logging.error(f"⚠️ No 'streams' found for {file_path}")
+        return None  
+
+    # Extract format-level metadata
+    format_info = metadata.get("format", {})
+
+    # ✅ Handle missing video stream safely
+    video_stream = next((s for s in metadata["streams"] if s["codec_type"] == "video"), None)
+
+    if video_stream is None:
+        logging.warning(f"⚠️ No video stream found for {file_path}. Skipping video metadata.")
+
+    # Extract all audio streams
+    audio_streams = [s for s in metadata["streams"] if s["codec_type"] == "audio"]
+    audio_languages = [s.get("tags", {}).get("language", "und") for s in audio_streams]
+    audio_stream = audio_streams[0] if audio_streams else None  # Pick first audio track
+
+    # Extract subtitle streams
+    subtitle_streams = [s for s in metadata["streams"] if s["codec_type"] == "subtitle"]
+    subtitle_languages = [s.get("tags", {}).get("language", "und") for s in subtitle_streams]
+
+    return {
+        # General File Info
+        "file_format": format_info.get("format_name"),
+        "duration": float(format_info.get("duration", 0)),
+        "probe_score": int(format_info.get("probe_score", 0)),
+
+        # ✅ Video Stream Metadata - Now Safe!
+        "video_codec": video_stream.get("codec_name") if video_stream else None,
+        "resolution": f"{video_stream.get('width', 'unknown')}x{video_stream.get('height', 'unknown')}" if video_stream else None,
+        "frame_rate": video_stream.get("avg_frame_rate") if video_stream else None,
+        "video_bitrate": int(video_stream.get("bit_rate", 0)) if video_stream and "bit_rate" in video_stream else None,
+        "video_bit_depth": int(video_stream.get("bits_per_raw_sample", 0)) if video_stream and "bits_per_raw_sample" in video_stream else None,
+        "color_primaries": video_stream.get("color_primaries") if video_stream else None,
+        "color_transfer": video_stream.get("color_transfer") if video_stream else None,
+
+        # Audio Stream Metadata
+        "audio_codec": audio_stream.get("codec_name") if audio_stream else None,
+        "audio_channels": int(audio_stream.get("channels", 0)) if audio_stream else None,
+        "audio_sample_rate": int(audio_stream.get("sample_rate", 0)) if audio_stream else None,
+        "audio_bitrate": int(audio_stream.get("bit_rate", 0)) if audio_stream and "bit_rate" in audio_stream else None,
+        "audio_languages": ", ".join(audio_languages),
+
+        # Subtitle Stream Metadata
+        "subtitle_count": len(subtitle_streams),
+        "subtitle_languages": ", ".join(subtitle_languages),
+    }
+
+
+def run_detailed_scan():
+    """Runs the detailed scan process and marks files as scanned."""
+    global detailed_scan_running
+
+    logging.info("🔍 Detailed scan started.")
+
+    video_files = database.get_unscanned_videos()
+    total_files = len(video_files)
+
+    if total_files == 0:
+        logging.info("✅ No video files need a detailed scan.")
+        detailed_scan_running = False
+        return
+
+    logging.info(f"🔄 Scanning {total_files} files for metadata.")
+
+    for i, file in enumerate(video_files):
+        if file.startswith("._") or file.endswith(".DS_Store"):  # ✅ Skip macOS metadata files
+            logging.info(f"⏭️ Skipping macOS metadata file: {file}")
+            continue
+
+        logging.info(f"📂 Processing file: {file}")
+        
+        metadata = extract_metadata_ffprobe(file)
+        if metadata is None:
+            logging.error(f"❌ Skipping {file} due to failed metadata extraction.")
+            continue  # Move to the next file
+
+        # ✅ Store metadata & mark as scanned (only once)
+        database.update_video_metadata(file, metadata)
+        database.mark_file_as_scanned(file)
+
+        # ✅ Log progress every 50 files instead of every single file
+        if (i + 1) % 50 == 0:
+            logging.info(f"📊 Progress: {i+1}/{len(video_files)} files scanned")
+
+
+    logging.info("✅ Detailed scan completed.")
+    detailed_scan_running = False  # ✅ Reset flag after completion
+
+
+def start_detailed_scan():
+    """Starts the detailed scan and ensures UI updates properly."""
+    global detailed_scan_running
+    if detailed_scan_running:
+        QMessageBox.warning(None, "Scan in Progress", "A detailed scan is already running.")
+        return
+    
+    detailed_scan_running = True  # ✅ Set flag to indicate a scan is running
+    progress_bar.setValue(0)
+    progress_bar.setVisible(True)
+
+    threading.Thread(target=run_detailed_scan, daemon=True).start()
+    progress_bar.setVisible(True)  # Show the progress bar
+
+    for i, file in enumerate(video_files):
+        metadata = extract_metadata_ffprobe(file)
+        database.update_video_metadata(file, metadata)
+        update_progress(i + 1, total_files)  # Update UI progress
+
+    logging.info("Detailed scan completed.")
+    QMessageBox.information(None, "Scan Complete", "Detailed scan completed successfully.")
+    
+    progress_bar.setVisible(False)  # Hide the progress bar after completion
+    detailed_scan_running = False  # ✅ Reset flag after completion
 

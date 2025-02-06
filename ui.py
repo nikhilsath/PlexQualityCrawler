@@ -3,16 +3,20 @@ import os
 import re
 import platform
 import subprocess
+import threading
 import logging
 import database
 import database.settings
+from scanner import run_detailed_scan
+
 from PyQt6.QtWidgets import (
     QApplication, QWidget, QLabel, QPushButton, QMessageBox, QFileDialog, QDialog, QListWidget,
-    QTableView, QVBoxLayout, QHBoxLayout, QCheckBox, QAbstractItemView, QComboBox
+    QTableView, QVBoxLayout, QHBoxLayout, QCheckBox, QAbstractItemView, QComboBox, QProgressBar
 )
 from PyQt6.QtCore import QAbstractTableModel, Qt, QTimer
 
 LOG_FILE = os.path.join(os.getcwd(), "plex_quality_crawler.log")  # Log file path
+detailed_scan_running = False  # Global flag to track scan status
 
 # Configure logging
 logging.basicConfig(
@@ -43,7 +47,7 @@ class ToggleSwitch(QCheckBox):
 
 # Create layouts for better structure
 main_layout = QVBoxLayout()
-switches_layout = QVBoxLayout()  # Dedicated layout for toggles
+switches_layout = QVBoxLayout()  
 buttons_layout = QVBoxLayout()
 
 def load_top_folders():
@@ -82,13 +86,32 @@ def select_scan_path():
         logging.info(f"User selected folder: {folder_name}")
 
         try:
+            logging.debug(f"Calling database.add_scan_target({folder_name})")
             database.add_scan_target(folder_name)  # ✅ Add to DB
             QTimer.singleShot(500, load_top_folders)  # ✅ Wait 500ms before reloading UI
             QMessageBox.information(window, "Scan Target Added", f"'{folder_name}' has been added.")
 
         except Exception as e:
             logging.error(f"Error adding scan target '{folder_name}': {str(e)}")
-            QMessageBox.warning(window, "Database Error", f"Could not add scan target: {str(e)}")
+
+
+def start_detailed_scan():
+    """Starts the detailed scan and ensures UI updates properly."""
+    global detailed_scan_running
+    if detailed_scan_running:
+        QMessageBox.warning(None, "Scan in Progress", "A detailed scan is already running.")
+        return
+    
+    detailed_scan_running = True
+    progress_bar.setValue(0)
+    progress_bar.setVisible(True)
+
+    # Use a QTimer to periodically refresh UI updates
+    scan_timer = QTimer()
+    scan_timer.timeout.connect(lambda: update_progress(current_progress, total_files))
+    scan_timer.start(500)  # Refresh progress every 500ms
+
+    threading.Thread(target=run_detailed_scan, daemon=True).start()
 
 def open_remove_scan_dialog():
     """Opens a dialog box to allow users to remove scan targets."""
@@ -139,7 +162,7 @@ def remove_selected_scans(dialog, scan_list):
     if confirm == QMessageBox.StandardButton.Yes:
         for item in selected_items:
             folder_name = item.text()
-            database.delete_scan_target(folder_name)  # ✅ Delete from DB
+            database.delete_scan_target(folder_name)  # Delete from DB
             logging.info(f"Deleted scan target: {folder_name}")
 
         QMessageBox.information(window, "Success", "Selected scan targets have been removed.")
@@ -162,6 +185,13 @@ def open_logs():
             subprocess.run(["xdg-open", LOG_FILE])
     except Exception as e:
         QMessageBox.warning(window, "Error", f"Could not open log file: {str(e)}")
+
+def update_progress(current, total):
+    """Updates the progress bar in the UI."""
+    if total > 0:
+        percentage = int((current / total) * 100)
+        progress_bar.setValue(percentage)
+
 
 def start_scanner():
     """Starts scanning all active scan targets, ensuring an SMB server is selected first."""
@@ -192,15 +222,17 @@ def start_scanner():
         logging.error(f"Error starting scanner: {str(e)}")
         QMessageBox.warning(window, "Error", f"Could not start scanner: {str(e)}")
 
-
+# Switch Toggles
 def toggle_scan_target(state, folder):
-    """Updates scan target status instead of trying to reinsert."""
+    """Updates scan target status and logs the action."""
     logging.debug(f"Toggle event: {folder} set to {'active' if state == 2 else 'inactive'}")
 
     try:
         if state == 2:  # Checked (ON)
+            logging.debug(f"Calling database.activate_scan_target({folder})")
             database.activate_scan_target(folder)  # ✅ Change status to 'active'
         else:  # Unchecked (OFF)
+            logging.debug(f"Calling database.deactivate_scan_target({folder})")
             database.deactivate_scan_target(folder)  # ✅ Change status to 'inactive'
     except Exception as e:
         logging.error(f"Error while toggling scan target '{folder}': {str(e)}")
@@ -244,38 +276,58 @@ else:
     default_server = available_servers[0] if available_servers else None
     smb_dropdown.setCurrentText(default_server)
     database.set_selected_smb_server(default_server) 
-
 # Combine with existing layout
 main_layout.addLayout(smb_layout)
 
-
-# File Count
+# File Count Label
 file_count_label = QLabel("Total Files: 0")
 main_layout.addWidget(file_count_label)
 
+# 📌 Create button layouts
+buttons_layout = QVBoxLayout()  # Main button layout
 
-# Buttons Section
+# 1️⃣ Horizontal Layout for "Add Scan Target" and "Remove Scan Target"
+add_remove_layout = QHBoxLayout()
 
-#Add Scan Target
+# Add Scan Target Button
 select_path_button = QPushButton("Add Scan Target")
 select_path_button.clicked.connect(select_scan_path)
-buttons_layout.addWidget(select_path_button)
+add_remove_layout.addWidget(select_path_button)
 
 # Remove Scan Targets Button
 remove_scan_button = QPushButton("Remove Scan Target")
 remove_scan_button.clicked.connect(open_remove_scan_dialog)
-buttons_layout.addWidget(remove_scan_button)
+add_remove_layout.addWidget(remove_scan_button)
 
+# 2️⃣ Add the horizontal layout to the main buttons layout
+buttons_layout.addLayout(add_remove_layout)
 
+# 3️⃣ Stack the remaining buttons below
+# Create a horizontal layout for Start Scan and Detailed Scan buttons
+scan_buttons_layout = QHBoxLayout()
+
+# Start Scan Button
 start_scan_button = QPushButton("Start Scan")
 start_scan_button.clicked.connect(start_scanner)
-buttons_layout.addWidget(start_scan_button)
+scan_buttons_layout.addWidget(start_scan_button)
+
+# Detailed Scan Button
+detailed_scan_button = QPushButton("Detailed Scan")
+detailed_scan_button.clicked.connect(start_detailed_scan)  # Calls the scan function
+scan_buttons_layout.addWidget(detailed_scan_button)
+buttons_layout.addLayout(scan_buttons_layout)
+
+# Progress Bar for Detailed Scan
+progress_bar = QProgressBar()
+progress_bar.setValue(0)  # Start at 0%
+progress_bar.setVisible(False)  # Hide initially
+main_layout.addWidget(progress_bar)
 
 logs_button = QPushButton("Open Logs")
 logs_button.clicked.connect(open_logs)
 buttons_layout.addWidget(logs_button)
 
-# Combine layouts
+# 📌 Combine all layouts
 main_layout.addLayout(switches_layout)
 main_layout.addLayout(buttons_layout)
 

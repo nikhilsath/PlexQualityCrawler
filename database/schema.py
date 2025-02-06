@@ -26,7 +26,25 @@ def initialize_database():
             file_size INTEGER,
             file_modified TEXT,
             last_scanned TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            top_folder TEXT
+            top_folder TEXT,
+            video_codec TEXT,
+            resolution TEXT,
+            duration REAL,
+            frame_rate TEXT,
+            video_bitrate INTEGER,
+            video_bit_depth INTEGER,
+            color_primaries TEXT,
+            color_transfer TEXT,
+            audio_codec TEXT,
+            audio_channels INTEGER,
+            audio_sample_rate INTEGER,
+            audio_bitrate INTEGER,
+            audio_languages TEXT,
+            subtitle_count INTEGER,
+            subtitle_languages TEXT,
+            file_format TEXT,
+            probe_score INTEGER,
+            detailed_scan_attempted INTEGER DEFAULT 0 
         )
     ''')
 

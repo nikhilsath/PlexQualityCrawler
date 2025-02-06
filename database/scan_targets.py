@@ -32,23 +32,6 @@ def add_scan_target(top_folder):
     finally:
         conn.close()
 
-def activate_scan_target(top_folder):
-    """Marks a scan target as 'active' instead of inserting a duplicate."""
-    conn = get_connection()
-    cursor = conn.cursor()
-    cursor.execute("UPDATE ScanTargets SET status = 'active' WHERE top_folder = ?", (top_folder,))
-    conn.commit()
-    conn.close()
-    logging.info(f"Scan target '{top_folder}' activated.")
-
-def deactivate_scan_target(top_folder):
-    """Marks a scan target as 'inactive' instead of removing it."""
-    conn = get_connection()
-    cursor = conn.cursor()
-    cursor.execute("UPDATE ScanTargets SET status = 'inactive' WHERE top_folder = ?", (top_folder,))
-    conn.commit()
-    conn.close()
-    logging.info(f"Scan target '{top_folder}' deactivated.")
 
 def update_last_scanned(top_folder):
     """Updates the last scanned timestamp for a top_folder."""
@@ -58,3 +41,36 @@ def update_last_scanned(top_folder):
     conn.commit()
     conn.close()
     logging.info(f"Updated last scanned time for '{top_folder}'.")
+
+def delete_scan_target(top_folder):
+    """Permanently removes a scan target from the database."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM ScanTargets WHERE top_folder = ?", (top_folder,))
+    conn.commit()
+    conn.close()
+    logging.info(f"Deleted scan target from database: {top_folder}")
+
+def activate_scan_target(top_folder):
+    """Marks a scan target as 'active' instead of inserting a duplicate."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    
+    logging.debug(f"Activating scan target: {top_folder}")  # ✅ Log before update
+    cursor.execute("UPDATE ScanTargets SET status = 'active' WHERE top_folder = ?", (top_folder,))
+    
+    conn.commit()
+    conn.close()
+    logging.info(f"Scan target '{top_folder}' activated.")
+
+def deactivate_scan_target(top_folder):
+    """Marks a scan target as 'inactive' instead of removing it."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    
+    logging.debug(f"Deactivating scan target: {top_folder}")  # ✅ Log before update
+    cursor.execute("UPDATE ScanTargets SET status = 'inactive' WHERE top_folder = ?", (top_folder,))
+    
+    conn.commit()
+    conn.close()
+    logging.info(f"Scan target '{top_folder}' deactivated.")
