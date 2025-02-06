@@ -7,13 +7,13 @@ import threading
 import logging
 import database
 import database.settings
-from scanner import run_detailed_scan
+from scanner import run_detailed_scan, ScanThread
 
 from PyQt6.QtWidgets import (
     QApplication, QWidget, QLabel, QPushButton, QMessageBox, QFileDialog, QDialog, QListWidget,
     QTableView, QVBoxLayout, QHBoxLayout, QCheckBox, QAbstractItemView, QComboBox, QProgressBar
 )
-from PyQt6.QtCore import QAbstractTableModel, Qt, QTimer
+from PyQt6.QtCore import QAbstractTableModel, Qt, QTimer, pyqtSignal, QObject
 
 LOG_FILE = os.path.join(os.getcwd(), "plex_quality_crawler.log")  # Log file path
 detailed_scan_running = False  # Global flag to track scan status
@@ -25,8 +25,7 @@ logging.basicConfig(
     format="%(asctime)s - %(levelname)s - %(message)s"
 )
 
-# Model for displaying scanned file data in a QTableView.
-
+# Switch Class
 class ToggleSwitch(QCheckBox):
     """Custom QCheckBox styled to look like a switch."""
     def __init__(self, label):
@@ -45,11 +44,22 @@ class ToggleSwitch(QCheckBox):
             """
         )
 
+#Progress Bar 
+def update_progress(current, total):
+    if total > 0:
+        percentage = int((current / total) * 100)
+        progress_bar.setValue(percentage)
+#Progress Update Classes 
+class ScanProgress(QObject):
+    progress_signal = pyqtSignal(int, int)  # Emits (current, total)
+scan_progress = ScanProgress()
+scan_progress.progress_signal.connect(update_progress)  # Connect signal to update function
+
 # Create layouts for better structure
 main_layout = QVBoxLayout()
 switches_layout = QVBoxLayout()  
 buttons_layout = QVBoxLayout()
-
+#Which Switches Appear
 def load_top_folders():
     """Fetches unique top folders, clears old switches, and updates the UI."""
     global switches_layout
@@ -71,12 +81,12 @@ def load_top_folders():
         switch.setChecked(folder in selected_folders)  # ✅ Set state based on DB
         switch.stateChanged.connect(lambda state, f=folder: toggle_scan_target(state, f))
         switches_layout.addWidget(switch)
-
+#Total file count content 
 def update_file_count():
     """Fetch total file count from the database and update the label."""
     total_files = database.get_total_file_count()
     file_count_label.setText(f"Total Files: {total_files}")
-
+#Add new switch (scan target)
 def select_scan_path():
     """Allows the user to select a folder to scan, adds it as a scan target, and refreshes UI."""
     folder_path = QFileDialog.getExistingDirectory(window, "Select a Folder to Scan")
@@ -94,7 +104,7 @@ def select_scan_path():
         except Exception as e:
             logging.error(f"Error adding scan target '{folder_name}': {str(e)}")
 
-
+#Detailed Scan Logic
 def start_detailed_scan():
     """Starts the detailed scan and ensures UI updates properly."""
     global detailed_scan_running
@@ -105,14 +115,14 @@ def start_detailed_scan():
     detailed_scan_running = True
     progress_bar.setValue(0)
     progress_bar.setVisible(True)
-
-    # Use a QTimer to periodically refresh UI updates
-    scan_timer = QTimer()
-    scan_timer.timeout.connect(lambda: update_progress(current_progress, total_files))
-    scan_timer.start(500)  # Refresh progress every 500ms
+    #Scanner Progress  
+    scan_thread = ScanThread()
+    scan_thread.progress_signal.connect(update_progress)  # Connect progress updates
+    scan_thread.finished.connect(lambda: setattr(detailed_scan_running, False))  # Reset flag when done
+    scan_thread.start()  # Start scanning in a thread
 
     threading.Thread(target=run_detailed_scan, daemon=True).start()
-
+#Remove Scan Dialog
 def open_remove_scan_dialog():
     """Opens a dialog box to allow users to remove scan targets."""
     dialog = QDialog(window)
@@ -143,7 +153,7 @@ def open_remove_scan_dialog():
 
     dialog.setLayout(layout)
     dialog.exec()  # Show the dialog
-
+#Remove Scan Target Logic 
 def remove_selected_scans(dialog, scan_list):
     """Deletes selected scan targets from the database."""
     selected_items = scan_list.selectedItems()
@@ -168,7 +178,7 @@ def remove_selected_scans(dialog, scan_list):
         QMessageBox.information(window, "Success", "Selected scan targets have been removed.")
         load_top_folders()  # Refresh UI
         dialog.accept()  # Close dialog
-
+# Open Logs Logic
 def open_logs():
     """Opens the log file (Cross-Platform)."""
     if not os.path.exists(LOG_FILE):
@@ -186,13 +196,8 @@ def open_logs():
     except Exception as e:
         QMessageBox.warning(window, "Error", f"Could not open log file: {str(e)}")
 
-def update_progress(current, total):
-    """Updates the progress bar in the UI."""
-    if total > 0:
-        percentage = int((current / total) * 100)
-        progress_bar.setValue(percentage)
 
-
+#Start Scanner Logic
 def start_scanner():
     """Starts scanning all active scan targets, ensuring an SMB server is selected first."""
     

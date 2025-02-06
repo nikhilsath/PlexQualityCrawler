@@ -7,6 +7,7 @@ import sqlite3
 import sys
 import database  
 from PyQt6.QtWidgets import QMessageBox
+from PyQt6.QtCore import QThread, pyqtSignal
 import shlex 
 
 # Global Variables
@@ -261,3 +262,14 @@ def start_detailed_scan():
     progress_bar.setVisible(False)  # Hide the progress bar after completion
     detailed_scan_running = False  # ✅ Reset flag after completion
 
+class ScanThread(QThread):
+    progress_signal = pyqtSignal(int, int)  # Emits progress updates
+
+    def run(self):
+        total_files = len(database.get_unscanned_videos())
+        scanned_files = 0
+
+        for file in database.get_unscanned_videos():
+            extract_metadata_ffprobe(file)  # Process the file
+            scanned_files += 1
+            self.progress_signal.emit(scanned_files, total_files)  # Emit progress update
