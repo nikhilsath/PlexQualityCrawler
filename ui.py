@@ -345,11 +345,11 @@ scan_buttons_layout.addWidget(start_scan_button)
 # Stop Scan Button
 stop_button = QPushButton("Stop Scan")
 stop_button.clicked.connect(stop_scan)
-buttons_layout.addWidget(stop_button)
+scan_buttons_layout.addWidget(stop_button)
 
 # Detailed Scan Button
 detailed_scan_button = QPushButton("Detailed Scan")
-detailed_scan_button.clicked.connect(start_detailed_scan)  # Calls the scan function
+detailed_scan_button.clicked.connect(start_detailed_scan)
 scan_buttons_layout.addWidget(detailed_scan_button)
 buttons_layout.addLayout(scan_buttons_layout)
 
@@ -358,7 +358,7 @@ progress_bar = QProgressBar()
 progress_bar.setValue(0)  # Start at 0%
 progress_bar.setVisible(False)  # Hide initially
 main_layout.addWidget(progress_bar)
-
+# Open logs button
 logs_button = QPushButton("Open Logs")
 logs_button.clicked.connect(open_logs)
 buttons_layout.addWidget(logs_button)
