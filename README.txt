@@ -1,9 +1,11 @@
 # Plex Quality Crawler
 
 ## Project Overview
-Plex Quality Crawler is a Python-based tool that scans directories for video files and tracks metadata to improve organization.
+
+Plex Quality Crawler is a Python-based tool that scans directories for all files and gathers metadata on video files. It provides an organized way to track media content by extracting relevant details while leaving other file types untouched.
 
 ## Project Structure
+
 ```
 PlexQualityCrawler/
 │── database/               # Database-related modules
@@ -22,8 +24,113 @@ PlexQualityCrawler/
 │── README.txt              # Project documentation
 ```
 
+## Function Descriptions
+
+### **Scanner Functions (`scanner.py`)**
+
+#### `run()` (scanner.py)
+- This function is currently under review and may be legacy code.
+- Testing is required to determine if it is still needed.
+
+#### `run_detailed_scan()`
+- Runs a detailed scan for video files.
+- Retrieves unscanned videos from the database and processes them with `ffprobe`.
+- Updates scan progress in the UI.
+- Marks files as `detailed_scan_attempted` even if scanning fails.
+
+#### `extract_metadata_ffprobe(file_path)`
+- Extracts metadata from video files using `ffprobe`.
+- Returns details such as codec, resolution, bitrate, and subtitle languages.
+- Ensures missing metadata does not break the scanning process.
+
+#### `scan_directory(scan_path)`
+- Recursively scans a directory for media files.
+- Collects metadata such as file size, last modified date, and file type.
+- Attempts to remount networked drives if unavailable.
+
+#### `remount_drive(scan_path, smb_server)`
+- Reconnects an SMB network drive if it's unmounted.
+- Uses system commands (`open smb://`) to remount on macOS.
+- Ensures scanning does not fail due to drive disconnection.
+
+#### `start_detailed_scan()` (scanner.py)
+- Starts the detailed scan process programmatically.
+- Handles scan initiation and progress updates within the scanning module.
+- Currently under review to determine if both versions of `start_detailed_scan()` are necessary.
+
+#### `mark_scan_in_progress(scan_id)` (scanner.py)
+- Marks a scan request as "in_progress" in the database.
+- This function is under review for possible removal after testing.
+
+### **UI Functions (`ui.py`)**
+
+#### `load_top_folders()` (ui.py)
+- Loads the list of top-level folders selected for scanning.
+- Fetches data from the database and populates the UI.
+
+
+#### `start_detailed_scan()` (ui.py)
+- Initiates a detailed scan in a background thread.
+- Ensures the UI remains responsive.
+- Shows a progress bar while scanning is in progress.
+- Calls the scan function in `scanner.py`.
+
+#### `update_progress(current, total)`
+- Updates the progress bar in the UI based on scan progress.
+- Ensures the UI is updated from the main thread.
+
+#### `open_logs()`
+- Opens the log file in the system's default text editor.
+- Handles platform-specific file opening (`open`, `xdg-open`, `os.startfile`).
+
+### **Database Functions (`database/`)**
+
+#### `get_unscanned_videos()` (file_records.py)
+- Retrieves a list of video files that have not yet undergone a detailed scan.
+
+#### `mark_file_as_scanned(file_path)` (file_records.py)
+- Marks a file as having completed a detailed scan.
+
+#### `mark_scan_attempted(file_path)` (file_records.py)
+- Flags a file as having attempted a scan, even if it failed.
+
+#### `update_video_metadata(file_path, metadata)` (file_records.py)
+- Stores extracted metadata into the database.
+
+#### `get_selected_smb_server()` (settings.py)
+- Retrieves the selected SMB server for network drive scanning.
+
+#### `get_selected_top_folders()` (scan_targets.py)
+- Fetches the top-level folders that are currently selected for scanning.
+
+#### `store_scan_results(file_name, file_path, file_size, file_modified, file_type)` (file_records.py)
+- Stores basic scan results for all media files found in a directory scan.
+
+#### `update_last_scanned(folder)` (scan_targets.py)
+- Updates the timestamp of when a folder was last scanned.
+
+## Planned Improvements
+
+### **1️⃣ Improve Scan Performance**
+- Implement multi-threaded scanning to speed up processing.
+- Optimize database writes to avoid bottlenecks.
+
+### **2️⃣ UI Enhancements**
+- Add scan history logs and error reporting in the UI.
+- Implement real-time scan status indicators.
+
+### **3️⃣ Implement File Health Checks**
+- Use `ffmpeg` to detect corrupted or incomplete media files.
+- Mark problematic files for manual review.
+
+### **4️⃣ Expand Metadata Collection**
+- Store additional metadata such as HDR info, bit depth, and additional audio tracks.
+
+### **5️⃣ Multi-Computer Support (Future Phase 2)**
+- Enable distributed scanning across multiple machines.
+- Implement a central database for merging scan results.
+
 ## Database Structure
-The application uses an SQLite database (`plex_quality_crawler.db`) with the following tables:
 
 ### **1. ScanTargets**
 Tracks directories being scanned.
@@ -45,6 +152,7 @@ file_size INTEGER
 file_modified TEXT
 last_scanned TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 top_folder TEXT
+detailed_scan_attempted INTEGER DEFAULT 0
 ```
 
 ### **3. Settings**
@@ -55,54 +163,15 @@ key TEXT UNIQUE NOT NULL
 value TEXT NOT NULL
 ```
 
-## Adding New Database Functions
-To add a new function to interact with the database:
-
-1. **Decide the file to modify**  
-   - If related to **scan targets**, update `scan_targets.py`  
-   - If related to **file records**, update `file_records.py`  
-   - If related to **settings**, update `settings.py`  
-   - If it's a core database operation, update `db_connection.py`
-
-2. **Write the function** in the appropriate file.  
-   Example: Adding a function to count scan targets in `scan_targets.py`:
-   ```python
-   def count_scan_targets():
-       """Returns the total number of scan targets."""
-       conn = get_connection()
-       cursor = conn.cursor()
-       cursor.execute("SELECT COUNT(*) FROM ScanTargets")
-       total = cursor.fetchone()[0]
-       conn.close()
-       return total
-   ```
-
-3. **Expose the function in `database.py`**
-   ```python
-   from database.scan_targets import count_scan_targets
-   ```
-   Add it to `__all__` to make it accessible when importing `database`:
-   ```python
-   __all__ = ["count_scan_targets"]
-   ```
-
-4. **Use the function in `scanner.py` or `ui.py`**  
-   ```python
-   total_targets = database.count_scan_targets()
-   print(f"Total scan targets: {total_targets}")
-   ```
-
 ## Best Practices for Large Projects
-To prevent losing functions during major refactors, large companies use:
-- **Code Documentation**: Internal wikis or tools like Confluence.  
-- **Automated Testing**: Ensuring critical functions are always checked.  
-- **Version Control**: Using Git and tracking function removals/additions.  
-- **API Documentation**: Keeping an updated list of all database functions.  
-- **Code Reviews**: Ensuring all functions are migrated before a major change.  
-
-This project should eventually adopt some of these practices for easier tracking.
+- **Enable WAL mode** for safer database writes.
+- **Ensure only one scan runs at a time** to prevent corruption.
+- **Use `INSERT OR REPLACE` instead of `INSERT`** to avoid duplicate issues.
+- **Close SQLite connections properly** to avoid incomplete writes.
 
 ## Next Steps
 - Implement logging for all major database operations.
 - Improve error handling for UI interactions.
 - Expand documentation with detailed function descriptions.
+- Review and consolidate redundant functions (`start_detailed_scan()` in both `scanner.py` and `ui.py`).
+

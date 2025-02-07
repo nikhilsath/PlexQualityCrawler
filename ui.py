@@ -3,6 +3,8 @@ import os
 import platform
 import subprocess
 import threading
+import signal
+import psutil
 import logging
 import database
 import database.settings
@@ -225,6 +227,15 @@ def start_scanner():
     except Exception as e:
         logging.error(f"Error starting scanner: {str(e)}")
         QMessageBox.warning(window, "Error", f"Could not start scanner: {str(e)}")
+#Stop scan logic
+def stop_scan():
+    """Stops the scan by killing the scanner process."""
+    for process in psutil.process_iter(['pid', 'name', 'cmdline']):
+        if process.info['cmdline'] and "scanner.py" in " ".join(process.info['cmdline']):
+            os.kill(process.info['pid'], signal.SIGTERM)  # Send termination signal
+            logging.info(f"Stopped scan process with PID {process.info['pid']}")
+            return
+    logging.warning("No active scan process found.")
 
 # Switch Toggles
 def toggle_scan_target(state, folder):
@@ -314,6 +325,11 @@ scan_buttons_layout = QHBoxLayout()
 start_scan_button = QPushButton("Start Scan")
 start_scan_button.clicked.connect(start_scanner)
 scan_buttons_layout.addWidget(start_scan_button)
+
+# Stop Scan Button
+stop_button = QPushButton("Stop Scan")
+stop_button.clicked.connect(stop_scan)
+buttons_layout.addWidget(stop_button)
 
 # Detailed Scan Button
 detailed_scan_button = QPushButton("Detailed Scan")
