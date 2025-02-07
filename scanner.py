@@ -20,11 +20,6 @@ logging.basicConfig(
     format="%(asctime)s - %(levelname)s - %(message)s"
 )
 
-# Updates a scan request's status to 'in_progress'
-def mark_scan_in_progress(scan_id):
-    database.update_scan_status(scan_id, "in_progress")
-    logging.info(f"Scan ID {scan_id} marked as 'in_progress'.")
-
 def remount_drive(scan_path, smb_server):
     """Attempts to remount the networked SMB drive if it's unmounted."""
     volume_name = scan_path.split("/")[2]  # Extracts the volume name
