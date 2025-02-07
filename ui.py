@@ -82,6 +82,11 @@ def load_top_folders():
         switch.setChecked(folder in selected_folders)  # ✅ Set state based on DB
         switch.stateChanged.connect(lambda state, f=folder: toggle_scan_target(state, f))
         switches_layout.addWidget(switch)
+#Stops force quit
+def set_detailed_scan_running(value):
+    global detailed_scan_running
+    detailed_scan_running = value
+
 #Total file count content 
 def update_file_count():
     """Fetch total file count from the database and update the label."""
@@ -119,7 +124,7 @@ def start_detailed_scan():
     #Scanner Progress  
     scan_thread = ScanThread()
     scan_thread.progress_signal.connect(update_progress)  # Connect progress updates
-    scan_thread.finished.connect(lambda: setattr(detailed_scan_running, False))  # Reset flag when done
+    scan_thread.finished.connect(lambda: set_detailed_scan_running(False))
     scan_thread.start()  # Start scanning in a thread
 
     threading.Thread(target=run_detailed_scan, daemon=True).start()
@@ -236,6 +241,17 @@ def stop_scan():
             logging.info(f"Stopped scan process with PID {process.info['pid']}")
             return
     logging.warning("No active scan process found.")
+
+#Close application rules
+def close_application():
+    """Ensures the scan thread stops safely without closing the UI."""
+    global scan_thread
+    if scan_thread and scan_thread.isRunning():
+        logging.info("Stopping scan thread before closing UI.")
+        scan_thread.quit()
+        scan_thread.wait()
+    logging.info("Scan thread stopped. UI remains open.")
+
 
 # Switch Toggles
 def toggle_scan_target(state, folder):

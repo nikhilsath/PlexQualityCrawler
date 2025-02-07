@@ -101,8 +101,8 @@ if __name__ == "__main__":
     logging.info(f"Fetched scan targets: {selected_folders}")
 
     if not selected_folders:
-        logging.info("No active scan targets found. Exiting scanner.")
-        sys.exit(0)  # Exit if no folders are selected
+        logging.info("No scan targets found. Scan process will not start.")
+        selected_folders = []  # Prevents the scan from running but keeps the UI open
 
     for folder in selected_folders:
         scan_path = f"/Volumes/{folder}/"  # Convert top_folder to full path
@@ -230,31 +230,6 @@ def run_detailed_scan():
     logging.info("✅ Detailed scan completed.")
     detailed_scan_running = False  # ✅ Reset flag after completion
 
-
-def start_detailed_scan():
-    """Starts the detailed scan and ensures UI updates properly."""
-    global detailed_scan_running
-    if detailed_scan_running:
-        QMessageBox.warning(None, "Scan in Progress", "A detailed scan is already running.")
-        return
-    
-    detailed_scan_running = True  # ✅ Set flag to indicate a scan is running
-    progress_bar.setValue(0)
-    progress_bar.setVisible(True)
-
-    threading.Thread(target=run_detailed_scan, daemon=True).start()
-    progress_bar.setVisible(True)  # Show the progress bar
-
-    for i, file in enumerate(video_files):
-        metadata = extract_metadata_ffprobe(file)
-        database.update_video_metadata(file, metadata)
-        update_progress(i + 1, total_files)  # Update UI progress
-
-    logging.info("Detailed scan completed.")
-    QMessageBox.information(None, "Scan Complete", "Detailed scan completed successfully.")
-    
-    progress_bar.setVisible(False)  # Hide the progress bar after completion
-    detailed_scan_running = False  # ✅ Reset flag after completion
 
 class ScanThread(QThread):
     progress_signal = pyqtSignal(int, int)  # Emits progress updates
